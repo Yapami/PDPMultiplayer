@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{97E551F7-41EE-1B82-006E-E1A8BFE16666}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "PDPMultiplayer",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
