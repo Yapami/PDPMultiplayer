@@ -1,13 +1,18 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PDPMultiplayerCharacter.h"
+
+#include "DrawDebugHelpers.h"
 #include "HeadMountedDisplayFunctionLibrary.h"
 #include "Camera/CameraComponent.h"
+#include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 //////////////////////////////////////////////////////////////////////////
 // APDPMultiplayerCharacter
@@ -45,6 +50,8 @@ APDPMultiplayerCharacter::APDPMultiplayerCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
+
+	OnTakeAnyDamage.AddDynamic(this, &APDPMultiplayerCharacter::Server_TakeDamage);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -60,6 +67,13 @@ void APDPMultiplayerCharacter::SetupPlayerInputComponent(class UInputComponent* 
 	PlayerInputComponent->BindAxis("MoveForward", this, &APDPMultiplayerCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &APDPMultiplayerCharacter::MoveRight);
 
+	// Change camera side
+	PlayerInputComponent->BindAction("ChangeCameraLeft", IE_Pressed, this, &APDPMultiplayerCharacter::Server_ChangeCameraSideLeft);
+	PlayerInputComponent->BindAction("ChangeCameraRight", IE_Pressed, this, &APDPMultiplayerCharacter::Server_ChangeCameraSideRight);
+
+	// Shot
+	PlayerInputComponent->BindAction("Shot", IE_Pressed, this, &APDPMultiplayerCharacter::Server_Shot);
+	
 	// We have 2 versions of the rotation bindings to handle different kinds of devices differently
 	// "turn" handles devices that provide an absolute delta, such as a mouse.
 	// "turnrate" is for devices that we choose to treat as a rate of change, such as an analog joystick
@@ -97,6 +111,163 @@ void APDPMultiplayerCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVect
 {
 		StopJumping();
 }
+
+AActor* APDPMultiplayerCharacter::LineTrace()
+{
+	auto World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	
+	FHitResult HitResult;
+	const FVector TraceStart = FollowCamera->GetComponentLocation();
+	const FVector TraceEnd = FollowCamera->GetForwardVector() * 30000.0f + TraceStart;
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+	
+	World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECollisionChannel::ECC_Visibility, QueryParams);
+	DrawDebugLine(World, TraceStart, TraceEnd, FColor::Green, true);
+	
+	return HitResult.Actor.Get();
+}
+
+bool APDPMultiplayerCharacter::Server_TakeDamage_Validate(AActor* DamagedActor, float Damage,
+	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+{
+	return DamagedActor != nullptr && Damage > 0.0f;
+}
+
+void APDPMultiplayerCharacter::Server_TakeDamage_Implementation(AActor* DamagedActor, float Damage,
+	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+{
+	if (APDPMultiplayerCharacter* Player = Cast<APDPMultiplayerCharacter>(DamagedActor))
+	{
+		Player->Health -= Damage;
+
+		UE_LOG(LogTemp, Error, TEXT("Health: %i"), (int)Player->Health);
+	}
+}
+
+void APDPMultiplayerCharacter::OnHealthChanged() const
+{
+	OnHealthChangedDelegate.ExecuteIfBound(Health);
+}
+
+bool APDPMultiplayerCharacter::Server_Shot_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Server_Shot_Implementation()
+{
+	if (CanShoot)
+	{
+		if (Ammo > 0)
+		{
+			Multicast_ShotSFX(Shot);
+			CanShoot = false;
+			--Ammo;
+			Client_TraceOnClient();
+			// TODO: Delay(0.3)
+			CanShoot = true;
+		}
+		else
+		{
+			Multicast_ShotSFX(NoAmmo);
+		}
+	}
+}
+
+bool APDPMultiplayerCharacter::Multicast_ShotSFX_Validate(USoundBase* Sound)
+{
+	return Sound != nullptr;
+}
+
+void APDPMultiplayerCharacter::Multicast_ShotSFX_Implementation(USoundBase* Sound)
+{
+	UGameplayStatics::SpawnSoundAttached(Sound, RootComponent, NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, WeaponSoundAttenuation)->Play();
+}
+
+bool APDPMultiplayerCharacter::Client_TraceOnClient_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Client_TraceOnClient_Implementation()
+{
+	if (AActor* HitActor = LineTrace())
+	{
+		if (HitActor->ActorHasTag("Player"))
+		{
+			Server_TraceOnServer();
+		}
+	}
+}
+
+bool APDPMultiplayerCharacter::Server_TraceOnServer_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Server_TraceOnServer_Implementation()
+{
+	if (AActor* HitActor = LineTrace())
+	{
+		HitActor->TakeDamage(20, FDamageEvent(), nullptr, nullptr);
+	}
+}
+
+void APDPMultiplayerCharacter::OnAmmoChanged()
+{
+	OnAmmoChangedDelegate.ExecuteIfBound(Ammo);
+}
+
+bool APDPMultiplayerCharacter::Server_ChangeCameraSideLeft_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Server_ChangeCameraSideLeft_Implementation()
+{
+	Multicast_ChangeCameraLeft();
+}
+
+bool APDPMultiplayerCharacter::Multicast_ChangeCameraLeft_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Multicast_ChangeCameraLeft_Implementation()
+{
+	static const FVector LeftSideCamera = {110.0f, -60.0, 70.0f};
+	
+	FollowCamera->SetRelativeLocation(LeftSideCamera);
+}
+
+bool APDPMultiplayerCharacter::Server_ChangeCameraSideRight_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Server_ChangeCameraSideRight_Implementation()
+{
+	Multicast_ChangeCameraRight();
+}
+
+bool APDPMultiplayerCharacter::Multicast_ChangeCameraRight_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Multicast_ChangeCameraRight_Implementation()
+{
+	static const FVector RightSideCamera = {110.0f, 60.0, 70.0f};
+	
+	FollowCamera->SetRelativeLocation(RightSideCamera);
+}
+
 
 void APDPMultiplayerCharacter::TurnAtRate(float Rate)
 {
@@ -137,4 +308,12 @@ void APDPMultiplayerCharacter::MoveRight(float Value)
 		// add movement in that direction
 		AddMovementInput(Direction, Value);
 	}
+}
+
+void APDPMultiplayerCharacter::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(APDPMultiplayerCharacter, Health);
+	DOREPLIFETIME(APDPMultiplayerCharacter, Ammo);
 }

@@ -6,6 +6,9 @@
 #include "GameFramework/Character.h"
 #include "PDPMultiplayerCharacter.generated.h"
 
+DECLARE_DELEGATE_OneParam(FOnAmmoChangedDelegate, const uint8)
+DECLARE_DELEGATE_OneParam(FOnHealthChangedDelegate, const float)
+
 UCLASS(config=Game)
 class APDPMultiplayerCharacter : public ACharacter
 {
@@ -28,6 +31,9 @@ public:
 	/** Base look up/down rate, in deg/sec. Other scaling may affect final rate. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Camera)
 	float BaseLookUpRate;
+
+	FOnAmmoChangedDelegate OnAmmoChangedDelegate;
+	FOnHealthChangedDelegate OnHealthChangedDelegate;
 
 protected:
 
@@ -57,6 +63,85 @@ protected:
 
 	/** Handler for when a touch input stops. */
 	void TouchStopped(ETouchIndex::Type FingerIndex, FVector Location);
+
+	UFUNCTION(BlueprintCallable)
+	AActor* LineTrace();
+
+protected:
+	// Take damage:
+	UPROPERTY(ReplicatedUsing = OnHealthChanged, EditDefaultsOnly, Category= "Health")
+	float Health = 100;
+
+	UFUNCTION()
+	void OnHealthChanged() const;
+	
+	
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_TakeDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+	bool Server_TakeDamage_Validate(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+	void Server_TakeDamage_Implementation(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser); 
+	
+protected:
+	// Shot:
+	UPROPERTY(ReplicatedUsing = OnAmmoChanged, EditDefaultsOnly, Category= "Health")
+	uint8 Ammo = 30;
+	
+	UFUNCTION()
+	void OnAmmoChanged();
+
+	
+	bool CanShoot = true;
+
+	UPROPERTY(EditAnywhere, Category= "SFX")
+	USoundBase* Shot;
+
+	UPROPERTY(EditAnywhere, Category= "SFX")
+	USoundBase* NoAmmo;
+
+	UPROPERTY(EditAnywhere, Category= "SFX")
+	USoundAttenuation* WeaponSoundAttenuation;
+	
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_Shot();
+	bool Server_Shot_Validate();
+	void Server_Shot_Implementation();
+
+	UFUNCTION(NetMulticast, Reliable, WithValidation)
+	void Multicast_ShotSFX(USoundBase* Sound);
+	bool Multicast_ShotSFX_Validate(USoundBase* Sound);
+	void Multicast_ShotSFX_Implementation(USoundBase* Sound);
+
+	UFUNCTION(Client, Unreliable, WithValidation)
+	void Client_TraceOnClient();
+	bool Client_TraceOnClient_Validate();
+	void Client_TraceOnClient_Implementation();
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_TraceOnServer();
+	bool Server_TraceOnServer_Validate();
+	void Server_TraceOnServer_Implementation();
+
+protected:
+	// Change camera side: 
+	UFUNCTION(Server, Unreliable, WithValidation)
+	void Server_ChangeCameraSideLeft();
+	bool Server_ChangeCameraSideLeft_Validate();
+	void Server_ChangeCameraSideLeft_Implementation();
+
+	UFUNCTION(NetMulticast, Unreliable, WithValidation)
+	void Multicast_ChangeCameraLeft();
+	bool Multicast_ChangeCameraLeft_Validate();
+	void Multicast_ChangeCameraLeft_Implementation();
+
+	UFUNCTION(Server, Unreliable, WithValidation)
+	void Server_ChangeCameraSideRight();
+	bool Server_ChangeCameraSideRight_Validate();
+	void Server_ChangeCameraSideRight_Implementation();
+
+	UFUNCTION(NetMulticast, Unreliable, WithValidation)
+	void Multicast_ChangeCameraRight();
+	bool Multicast_ChangeCameraRight_Validate();
+	void Multicast_ChangeCameraRight_Implementation();
 
 protected:
 	// APawn interface
