@@ -54,6 +54,8 @@ APDPMultiplayerCharacter::APDPMultiplayerCharacter()
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
 
 	OnTakeAnyDamage.AddDynamic(this, &APDPMultiplayerCharacter::Server_TakeDamage);
+
+	SetReplicates(true);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -124,7 +126,7 @@ AActor* APDPMultiplayerCharacter::LineTrace()
 	
 	FHitResult HitResult;
 	const FVector TraceStart = FollowCamera->GetComponentLocation();
-	const FVector TraceEnd = FollowCamera->GetForwardVector() * 30000.0f + TraceStart;
+	const FVector TraceEnd = FollowCamera->GetForwardVector() * TraceDistance + TraceStart;
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
@@ -139,9 +141,14 @@ void APDPMultiplayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// TODO: Delay(0.3)
-	Client_DrawUI();
-	
+	FTimerHandle TimerHandle;
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(TimerHandle, this, &APDPMultiplayerCharacter::Client_DrawUI, 0.3f, false);
 }
 
 bool APDPMultiplayerCharacter::Server_TakeDamage_Validate(AActor* DamagedActor, float Damage,
@@ -157,14 +164,37 @@ void APDPMultiplayerCharacter::Server_TakeDamage_Implementation(AActor* DamagedA
 	{
 		Player->Health -= Damage;
 
+		if (GetLocalRole() == ROLE_Authority)
+		{
+			OnHealthChangedDelegate.ExecuteIfBound(Health);
+		}
+
 		if (Player->Health <= 0)
 		{
 			CanShoot = false;
 			Client_DeleteUI();
 			Multicast_Ragdoll();
+
+			UWorld* World = GetWorld();
+			if (!World)
+			{
+				return;
+			}
+
+			APDPMultiplayerGameMode* GameMode = Cast<APDPMultiplayerGameMode>(World->GetAuthGameMode());
+			if (!World->GetAuthGameMode())
+			{
+				return;
+			}
+
+			AController* CharacterController = Player->GetController();
+			if (!CharacterController)
+			{
+				return;
+			}
 			
 			FTimerDelegate RespawnDelegate;
-			RespawnDelegate.BindUObject(Cast<APDPMultiplayerGameMode>(GetWorld()->GetAuthGameMode()), &APDPMultiplayerGameMode::Respawn, Player->GetController());
+			RespawnDelegate.BindUObject(GameMode, &APDPMultiplayerGameMode::Respawn, CharacterController);
 
 			FTimerHandle RespawnTimerHandle;
 			GetWorld()->GetTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, 2.0f, false);
@@ -205,11 +235,27 @@ void APDPMultiplayerCharacter::Server_Shot_Implementation()
 		if (Ammo > 0)
 		{
 			Multicast_ShotSFX(Shot);
+			
 			CanShoot = false;
+
+			UWorld* World = GetWorld();
+			if (World)
+			{
+				FTimerHandle TimerHandle;
+				World->GetTimerManager().SetTimer(TimerHandle, [&]()
+				{
+					CanShoot = true;
+				}, 0.2f, false);
+			}
+			
 			--Ammo;
+			
+			if (GetLocalRole() == ROLE_Authority)
+			{
+				OnAmmoChangedDelegate.ExecuteIfBound(Ammo);
+			}
+			
 			Client_TraceOnClient();
-			// TODO: Delay(0.3)
-			CanShoot = true;
 		}
 		else
 		{
@@ -253,7 +299,7 @@ void APDPMultiplayerCharacter::Server_TraceOnServer_Implementation()
 {
 	if (AActor* HitActor = LineTrace())
 	{
-		HitActor->TakeDamage(20, FDamageEvent(), nullptr, nullptr);
+		HitActor->TakeDamage(DamageAmount, FDamageEvent(), nullptr, nullptr);
 	}
 }
 

@@ -71,7 +71,7 @@ protected:
 
 protected:
 	// Take damage:
-	UPROPERTY(ReplicatedUsing = OnHealthChanged, EditDefaultsOnly, Category= "Health")
+	UPROPERTY(ReplicatedUsing = OnHealthChanged, EditDefaultsOnly, Category= "Character Atributes")
 	float Health = 100;
 
 	UFUNCTION()
@@ -90,12 +90,11 @@ protected:
 	
 protected:
 	// Shot:
-	UPROPERTY(ReplicatedUsing = OnAmmoChanged, EditDefaultsOnly, Category= "Health")
+	UPROPERTY(ReplicatedUsing = OnAmmoChanged, EditDefaultsOnly, Category= "Character Atributes")
 	uint8 Ammo = 30;
 	
 	UFUNCTION()
 	void OnAmmoChanged();
-
 	
 	bool CanShoot = true;
 
@@ -166,6 +165,14 @@ protected:
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	// End of APawn interface
+
+private:
+
+	UPROPERTY(EditDefaultsOnly, Category= "Character Atributes", meta=(ClampMin = "0"))
+	uint16 DamageAmount = 20;
+
+	UPROPERTY(EditDefaultsOnly, Category= "Character Atributes", meta=(ClampMin = "0"))
+	float TraceDistance = 30000.0f;
 
 public:
 	/** Returns CameraBoom subobject **/
