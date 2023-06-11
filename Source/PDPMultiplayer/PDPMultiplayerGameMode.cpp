@@ -1,7 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PDPMultiplayerGameMode.h"
+
+#include "K2Node_SpawnActor.h"
 #include "PDPMultiplayerCharacter.h"
+#include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 
 APDPMultiplayerGameMode::APDPMultiplayerGameMode()
@@ -12,4 +15,27 @@ APDPMultiplayerGameMode::APDPMultiplayerGameMode()
 	{
 		DefaultPawnClass = PlayerPawnBPClass.Class;
 	}
+}
+
+void APDPMultiplayerGameMode::Respawn(AController* Controller)
+{
+	APawn* Pawn = Controller->GetPawn();
+
+	if (IsValid(Pawn))
+	{
+		Pawn->Destroy();
+	}
+	
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	
+	TArray<AActor*> PlayerStarts;
+	UGameplayStatics::GetAllActorsOfClass(World, APlayerStart::StaticClass(), PlayerStarts);
+
+	const APlayerStart* RandomPlayerStart = Cast<APlayerStart>(PlayerStarts[FMath::RandHelper(PlayerStarts.Num())]);
+	
+	Controller->Possess(Cast<APDPMultiplayerCharacter>(World->SpawnActor(DefaultPawnClass, &RandomPlayerStart->GetTransform(), FActorSpawnParameters())));
 }

@@ -4,6 +4,8 @@
 
 #include "DrawDebugHelpers.h"
 #include "HeadMountedDisplayFunctionLibrary.h"
+#include "PDPMultiplayerGameMode.h"
+#include "PDPMultiplayerHUD.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -133,8 +135,17 @@ AActor* APDPMultiplayerCharacter::LineTrace()
 	return HitResult.Actor.Get();
 }
 
+void APDPMultiplayerCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	// TODO: Delay(0.3)
+	Client_DrawUI();
+	
+}
+
 bool APDPMultiplayerCharacter::Server_TakeDamage_Validate(AActor* DamagedActor, float Damage,
-	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+                                                          const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
 	return DamagedActor != nullptr && Damage > 0.0f;
 }
@@ -146,8 +157,35 @@ void APDPMultiplayerCharacter::Server_TakeDamage_Implementation(AActor* DamagedA
 	{
 		Player->Health -= Damage;
 
-		UE_LOG(LogTemp, Error, TEXT("Health: %i"), (int)Player->Health);
+		if (Player->Health <= 0)
+		{
+			CanShoot = false;
+			Client_DeleteUI();
+			Multicast_Ragdoll();
+			
+			FTimerDelegate RespawnDelegate;
+			RespawnDelegate.BindUObject(Cast<APDPMultiplayerGameMode>(GetWorld()->GetAuthGameMode()), &APDPMultiplayerGameMode::Respawn, Player->GetController());
+
+			FTimerHandle RespawnTimerHandle;
+			GetWorld()->GetTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, 2.0f, false);
+		}
 	}
+}
+
+bool APDPMultiplayerCharacter::Multicast_Ragdoll_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Multicast_Ragdoll_Implementation()
+{
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (IsValid(Capsule))
+	{
+		Capsule->DestroyComponent();
+		GetMesh()->SetSimulatePhysics(true);
+	}
+	
 }
 
 void APDPMultiplayerCharacter::OnHealthChanged() const
@@ -216,6 +254,78 @@ void APDPMultiplayerCharacter::Server_TraceOnServer_Implementation()
 	if (AActor* HitActor = LineTrace())
 	{
 		HitActor->TakeDamage(20, FDamageEvent(), nullptr, nullptr);
+	}
+}
+
+bool APDPMultiplayerCharacter::Client_DrawUI_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Client_DrawUI_Implementation()
+{
+	if (GetController()->IsLocalController())
+	{
+		if (!Controller)
+		{
+			return;
+		}
+
+		APlayerController* PlayerController = Cast<APlayerController>(Controller);
+		if (!PlayerController)
+		{
+			return;
+		}
+
+		AHUD* HUD = PlayerController->GetHUD();
+		if (!HUD)
+		{
+			return;
+		}
+
+		APDPMultiplayerHUD* MyHUD = Cast<APDPMultiplayerHUD>(HUD);
+		if (!MyHUD)
+		{
+			return;
+		}
+
+		MyHUD->DrawIU();
+	}
+}
+
+bool APDPMultiplayerCharacter::Client_DeleteUI_Validate()
+{
+	return true;
+}
+
+void APDPMultiplayerCharacter::Client_DeleteUI_Implementation()
+{
+	if (GetController()->IsLocalController())
+	{
+		if (!Controller)
+		{
+			return;
+		}
+
+		APlayerController* PlayerController = Cast<APlayerController>(Controller);
+		if (!PlayerController)
+		{
+			return;
+		}
+
+		AHUD* HUD = PlayerController->GetHUD();
+		if (!HUD)
+		{
+			return;
+		}
+
+		APDPMultiplayerHUD* MyHUD = Cast<APDPMultiplayerHUD>(HUD);
+		if (!MyHUD)
+		{
+			return;
+		}
+
+		MyHUD->DeleteUI();
 	}
 }
 

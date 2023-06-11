@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerStart.h"
+#include "PDPMultiplayerCharacter.h"
 #include "PDPMultiplayerGameMode.generated.h"
 
 UCLASS(minimalapi)
@@ -13,6 +15,8 @@ class APDPMultiplayerGameMode : public AGameModeBase
 
 public:
 	APDPMultiplayerGameMode();
+
+	void Respawn(AController* Controller);
 };
 
 

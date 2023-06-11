@@ -67,6 +67,8 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	AActor* LineTrace();
 
+	virtual void PossessedBy(AController* NewController) override;
+
 protected:
 	// Take damage:
 	UPROPERTY(ReplicatedUsing = OnHealthChanged, EditDefaultsOnly, Category= "Health")
@@ -79,7 +81,12 @@ protected:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_TakeDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 	bool Server_TakeDamage_Validate(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
-	void Server_TakeDamage_Implementation(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser); 
+	void Server_TakeDamage_Implementation(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+
+	UFUNCTION(NetMulticast, Unreliable, WithValidation)
+	void Multicast_Ragdoll();
+	bool Multicast_Ragdoll_Validate();
+	void Multicast_Ragdoll_Implementation();
 	
 protected:
 	// Shot:
@@ -121,6 +128,18 @@ protected:
 	bool Server_TraceOnServer_Validate();
 	void Server_TraceOnServer_Implementation();
 
+protected:
+	// UI:
+	UFUNCTION(Client, Reliable, WithValidation)
+	void Client_DrawUI();
+	bool Client_DrawUI_Validate();
+	void Client_DrawUI_Implementation();
+
+	UFUNCTION(Client, Reliable, WithValidation)
+	void Client_DeleteUI();
+	bool Client_DeleteUI_Validate();
+	void Client_DeleteUI_Implementation();
+	
 protected:
 	// Change camera side: 
 	UFUNCTION(Server, Unreliable, WithValidation)
