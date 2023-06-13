@@ -118,7 +118,7 @@ void APDPMultiplayerCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVect
 
 AActor* APDPMultiplayerCharacter::LineTrace()
 {
-	auto World = GetWorld();
+	UWorld* World = GetWorld();
 	if (!World)
 	{
 		return nullptr;
