@@ -73,6 +73,7 @@ protected:
 	// Take damage:
 	UPROPERTY(ReplicatedUsing = OnHealthChanged, EditDefaultsOnly, Category= "Character Atributes")
 	float Health = 100;
+	bool CanTakeDamage = true;
 
 	UFUNCTION()
 	void OnHealthChanged() const;
@@ -179,5 +180,13 @@ public:
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	//TODO: rework all bellow
+protected:
+	UFUNCTION(BlueprintImplementableEvent)
+	void AddScore(AController* InstigatedBy);
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void SetIsDead();
 };
 
